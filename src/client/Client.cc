@@ -692,6 +692,7 @@ void Client::_finish_init()
     plb.add_time(l_c_wr_avg, "writeavg", "Average latency for processing write requests");
     plb.add_u64(l_c_wr_sqsum, "writesqsum", "Sum of squares ((to calculate variability/stdev) for write requests");
     plb.add_u64(l_c_wr_ops, "wrops", "Total write IO operations");
+<<<<<<< HEAD
     plb.add_u64_avg(l_c_rd_sz_avg, "rd_sz_avg", "Average read size");
     plb.add_u64(l_c_rd_sz_sqsum, "rd_sz_sqsum", "Sum of squares for read size");
     plb.add_u64_avg(l_c_wr_sz_avg, "wr_sz_avg", "Average write size");
@@ -757,6 +758,20 @@ void Client::_finish_init()
     plb.add_time_avg(l_c_fscrypt_dec_lat, "fscrypt_dec_lat", "Decryption time");
     plb.add_time_avg(l_c_fscrypt_rd_lat, "fscrypt_rd_lat", "Overall fscrypt read latency");
     plb.add_time_avg(l_c_fscrypt_wr_lat, "fscrypt_wr_lat", "Overall fscrypt write latency");
+=======
+    //per operation  counters
+    plb.add_time_avg(l_c_lat_getattr, "lat_getattr", "Network latency for GETATTR operations");
+    plb.add_time_avg(l_c_lat_lookup, "lat_lookup", "Network latency for LOOKUP operations");
+    plb.add_time_avg(l_c_lat_readdir, "lat_readdir", "Network latency for READDIR operations");
+    plb.add_time_avg(l_c_lat_open, "lat_open", "Network latency for OPEN operations");
+    plb.add_time_avg(l_c_lat_create, "lat_create", "Network latency for CREATE operations");
+    plb.add_time_avg(l_c_lat_mkdir, "lat_mkdir", "Network latency for MKDIR operations");
+    plb.add_time_avg(l_c_lat_unlink, "lat_unlink", "Network latency for UNLINK operations");
+    //plb.add_time_avg(l_c_lat_rmdir, "lat_rmdir", "Network latency for RMDIR operations");
+    //plb.add_time_avg(l_c_lat_rename, "lat_rename", "Network latency for RENAME operations");
+    plb.add_time_avg(l_c_lat_setattr, "lat_setattr", "Network latency for SETATTR operations");
+    plb.add_time_avg(l_c_mds_rtt, "mds_rtt", "MDS round-trip time from send to reply");
+>>>>>>> cd517cf0a9a (client: Completed MDS round trip counter, and some work on per operation lat counters)
     logger.reset(plb.create_perf_counters());
     cct->get_perfcounters_collection()->add(logger.get());
   }
@@ -907,6 +922,31 @@ void Client::update_io_stat_metadata(utime_t latency) {
   logger->tset(l_c_md_avg, avg);
   logger->set(l_c_md_sqsum, n_sqsum);
   logger->set(l_c_md_ops, nr_metadata_request);
+}
+
+void Client::update_io_stat_metadata_per_op(int op, utime_t latency){
+  int counter_id = -1;
+  
+  switch(op){
+    case CEPH_MDS_OP_GETATTR:
+    counter_id = l_c_lat_getattr;
+    break;
+    case CEPH_MDS_OP_LOOKUP:
+    counter_id = l_c_lat_lookup;
+    break;
+    case CEPH_MDS_OP_OPEN:
+    counter_id = l_c_lat_open;
+    break;
+    case CEPH_MDS_OP_CREATE:
+    counter_id = l_c_lat_create;
+    break;
+    default:
+    return;
+  }
+
+  if(counter_id >= 0){
+    logger->tinc(counter_id, latency);
+  }
 }
 
 void Client::update_io_stat_read(utime_t latency) {
@@ -2408,6 +2448,7 @@ int Client::make_request(MetaRequest *request,
       break;
     }
 
+    utime_t mds_rtt_start = mono_clock_now();
     // send request.
     send_request(request, session.get());
 
@@ -2423,6 +2464,20 @@ int Client::make_request(MetaRequest *request,
     });
     l.release();
     request->caller_cond = nullptr;
+
+    // calculate MDS round-trip time
+    utime_t mds_rtt = mono_clock_now();
+    mds_rtt -= mds_rtt_start;
+    
+    // log MDS round-trip time with context
+    ldout(cct, 20) << "make_request tid " << tid << " mds." << mds
+                   << " op " << ceph_mds_op_name(request->get_op())
+                   << " mds_rtt " << mds_rtt << dendl;
+    
+    // update performance counter
+    if (logger) {
+      logger->tinc(l_c_mds_rtt, mds_rtt);
+    }
 
     // did we get a reply?
     if (request->reply)
@@ -2464,6 +2519,7 @@ int Client::make_request(MetaRequest *request,
 
   ++nr_metadata_request;
   update_io_stat_metadata(lat);
+  update_io_stat_metadata_per_op(request->get_op(), lat);
 
   put_request(request);
   return r;

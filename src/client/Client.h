@@ -101,6 +101,7 @@ enum {
   l_c_wr_avg,
   l_c_wr_sqsum,
   l_c_wr_ops,
+<<<<<<< HEAD
   l_c_rd_sz_avg,
   l_c_rd_sz_sqsum,
   l_c_wr_sz_avg,
@@ -166,6 +167,22 @@ enum {
   l_c_fscrypt_dec_lat,
   l_c_fscrypt_rd_lat,
   l_c_fscrypt_wr_lat,
+=======
+    //per operation Lat for MDS
+  l_c_lat_getattr,
+  l_c_lat_lookup,
+  l_c_lat_readdir,
+  l_c_lat_open,
+  l_c_lat_create,
+  l_c_lat_mkdir,
+  l_c_lat_unlink,
+  //l_c_rmdir,
+  //l_c_rename,
+  l_c_lat_setattr,
+  //l_c_lat_setxattr,
+  //l_c_lat_getxattr,
+  l_c_mds_rtt,
+>>>>>>> cd517cf0a9a (client: Completed MDS round trip counter, and some work on per operation lat counters)
   l_c_last,
 };
 
@@ -2341,6 +2358,7 @@ private:
   void update_io_stat_metadata(utime_t latency);
   void update_io_stat_read(utime_t latency);
   void update_io_stat_write(utime_t latency);
+  void update_io_stat_metadata_per_op(int op, utime_t latency);
 
   bool should_check_perms() const {
     return (is_fuse && !fuse_default_permissions) || (!is_fuse && client_permissions);
