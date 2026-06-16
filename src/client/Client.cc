@@ -700,8 +700,8 @@ void Client::_finish_init()
     plb.add_time_avg(l_c_lat_create, "lat_create", "Network latency for CREATE operations");
     plb.add_time_avg(l_c_lat_mkdir, "lat_mkdir", "Network latency for MKDIR operations");
     plb.add_time_avg(l_c_lat_unlink, "lat_unlink", "Network latency for UNLINK operations");
-    //plb.add_time_avg(l_c_lat_rmdir, "lat_rmdir", "Network latency for RMDIR operations");
-    //plb.add_time_avg(l_c_lat_rename, "lat_rename", "Network latency for RENAME operations");
+    plb.add_time_avg(l_c_lat_rmdir, "lat_rmdir", "Network latency for RMDIR operations");
+    plb.add_time_avg(l_c_lat_rename, "lat_rename", "Network latency for RENAME operations");
     plb.add_time_avg(l_c_lat_setattr, "lat_setattr", "Network latency for SETATTR operations");
     plb.add_time_avg(l_c_mds_rtt, "mds_rtt", "MDS round-trip time from send to reply");
     logger.reset(plb.create_perf_counters());
@@ -859,22 +859,28 @@ void Client::update_io_stat_metadata(utime_t latency) {
 void Client::update_io_stat_metadata_per_op(int op, utime_t latency){
   int counter_id = -1;
   
-  switch(op){
-    case CEPH_MDS_OP_GETATTR:
-    counter_id = l_c_lat_getattr;
-    break;
-    case CEPH_MDS_OP_LOOKUP:
-    counter_id = l_c_lat_lookup;
-    break;
-    case CEPH_MDS_OP_OPEN:
-    counter_id = l_c_lat_open;
-    break;
-    case CEPH_MDS_OP_CREATE:
+  switch (op) {
+  case CEPH_MDS_OP_CREATE:
     counter_id = l_c_lat_create;
     break;
-    default:
+  case CEPH_MDS_OP_MKDIR:
+    counter_id = l_c_lat_mkdir;
+    break;
+  case CEPH_MDS_OP_UNLINK:
+    counter_id = l_c_lat_unlink;
+    break;
+  case CEPH_MDS_OP_RMDIR:
+    counter_id = l_c_lat_rmdir;
+    break;
+  case CEPH_MDS_OP_RENAME:
+    counter_id = l_c_lat_rename;
+    break;
+  case CEPH_MDS_OP_SETATTR:
+    counter_id = l_c_lat_setattr;
+    break;
+  default:
     return;
-  }
+}
 
   if(counter_id >= 0){
     logger->tinc(counter_id, latency);
@@ -2413,8 +2419,8 @@ int Client::make_request(MetaRequest *request,
     *pdirbl = reply->get_extra_bl();
 
   // -- log times --
-  utime_t lat = mono_clock_now();
-  lat -= request->sent_stamp;
+  utime_t lat = ceph_clock_now();
+  lat -= request->op_stamp; 
   ldout(cct, 20) << "lat " << lat << dendl;
 
   ++nr_metadata_request;
