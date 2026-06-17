@@ -2275,7 +2275,7 @@ private:
   void update_io_stat_metadata(utime_t latency);
   void update_io_stat_read(utime_t latency);
   void update_io_stat_write(utime_t latency);
-  void update_io_stat_metadata_per_op(int op, utime_t latency);
+ // void update_io_stat_metadata_per_op(int op, utime_t latency); Uneccessary Helper function
 
   bool should_check_perms() const {
     return (is_fuse && !fuse_default_permissions) || (!is_fuse && client_permissions);

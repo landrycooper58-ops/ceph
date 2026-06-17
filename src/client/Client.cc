@@ -856,7 +856,7 @@ void Client::update_io_stat_metadata(utime_t latency) {
   logger->set(l_c_md_ops, nr_metadata_request);
 }
 
-void Client::update_io_stat_metadata_per_op(int op, utime_t latency){
+/*void Client::update_io_stat_metadata_per_op(int op, utime_t latency){
   int counter_id = -1;
   
   switch (op) {
@@ -885,7 +885,7 @@ void Client::update_io_stat_metadata_per_op(int op, utime_t latency){
   if(counter_id >= 0){
     logger->tinc(counter_id, latency);
   }
-}
+}  Helper function removed*/
 
 void Client::update_io_stat_read(utime_t latency) {
   auto lat_nsec = latency.to_nsec();
@@ -2425,7 +2425,30 @@ int Client::make_request(MetaRequest *request,
 
   ++nr_metadata_request;
   update_io_stat_metadata(lat);
-  update_io_stat_metadata_per_op(request->get_op(), lat);
+  //update_io_stat_metadata_per_op(request->get_op(), lat); replaced the helper function call witht the helper function.
+  switch (request->get_op()) {
+    case CEPH_MDS_OP_CREATE:
+      logger->tinc(l_c_lat_create, lat);
+      break;
+    case CEPH_MDS_OP_MKDIR:
+      logger->tinc(l_c_lat_mkdir, lat);
+      break;
+    case CEPH_MDS_OP_UNLINK:
+      logger->tinc(l_c_lat_unlink, lat);
+      break;
+    case CEPH_MDS_OP_RMDIR:
+      logger->tinc(l_c_lat_rmdir, lat);
+      break;
+    case CEPH_MDS_OP_RENAME:
+      logger->tinc(l_c_lat_rename, lat);
+      break;
+    case CEPH_MDS_OP_SETATTR:
+      logger->tinc(l_c_lat_setattr, lat);
+      break;
+    default:
+      break;
+}
+
 
   put_request(request);
   return r;
