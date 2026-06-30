@@ -179,8 +179,14 @@ enum {
   l_c_lat_setattr,
   //l_c_lat_setxattr,
  // l_c_lat_getxattr,
+ //new
+  l_c_dentry_count,
+  l_c_caps_flushing,
+  l_c_cap_wait_lat,
+  l_c_unsafe_reqs,
+  l_c_lock_ops,
+  l_c_lock_lat,
   l_c_mds_rtt,
-
   l_c_last,
 };
 

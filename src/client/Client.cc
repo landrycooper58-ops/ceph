@@ -771,7 +771,15 @@ void Client::_finish_init()
     plb.add_time_avg(l_c_lat_rename, "lat_rename", "Network latency for RENAME operations");
     plb.add_time_avg(l_c_lat_setattr, "lat_setattr", "Network latency for SETATTR operations");
     plb.add_time_avg(l_c_mds_rtt, "mds_rtt", "MDS round-trip time from send to reply");
-    
+
+    //NEW!!
+    plb.add_u64(l_c_dentry_count, "dentry_count", "Number of dentries in the metadata cache");
+    plb.add_u64(l_c_caps_flushing, "caps_flushing", "Number of inodes with caps currently being flushed to MDS");
+    plb.add_time_avg(l_c_cap_wait_lat, "cap_wait_lat", "Latency waiting for caps to become available");
+    plb.add_u64(l_c_unsafe_reqs, "unsafe_reqs", "Number of in-flight metadata requests not yet committed on MDS");
+    plb.add_u64_counter(l_c_lock_ops, "lock_ops", "Total fcntl/flock file locking operations");
+    plb.add_time_avg(l_c_lock_lat, "lock_lat", "Latency of fcntl/flock file locking operations");
+
     logger.reset(plb.create_perf_counters());
     cct->get_perfcounters_collection()->add(logger.get());
   }
@@ -1015,6 +1023,8 @@ void Client::trim_cache(bool trim_kernel_dcache)
 
   if (trim_kernel_dcache && lru.lru_get_size() > max)
     _invalidate_kernel_dcache();
+  
+  logger->set(l_c_dentry_count, lru.lru_get_size());//set the counter after every trim pass NEW!!
 
   // hose root?
   if (lru.lru_get_size() == 0 && root && root->get_nref() == 1 && inode_map.size() == 1 + root_parents.size()) {
@@ -3264,6 +3274,7 @@ void Client::handle_client_reply(const MConstRef<MClientReply>& reply)
   if (!is_safe) {
     request->got_unsafe = true;
     session->unsafe_requests.push_back(&request->unsafe_item);
+    logger->inc(l_c_unsafe_reqs); //inc counter when request transitions to unsafe NEW!!
     if (is_dir_operation(request)) {
       Inode *dir = request->inode();
       ceph_assert(dir);
@@ -3301,6 +3312,7 @@ void Client::handle_client_reply(const MConstRef<MClientReply>& reply)
     // the filesystem change is committed to disk
     // we're done, clean up
     if (request->got_unsafe) {
+      logger->dec(l_c_unsafe_reqs); // When the mds commit a unsafe requst NEW!!
       request->unsafe_item.remove_myself();
       request->unsafe_dir_item.remove_myself();
       request->unsafe_target_item.remove_myself();
@@ -5402,6 +5414,7 @@ int Client::mark_caps_flushing(Inode *in, ceph_tid_t* ptid)
   if (!in->flushing_caps) {
     ldout(cct, 10) << __func__ << " " << ccap_string(flushing) << " " << *in << dendl;
     num_flushing_caps++;
+    logger->inc(l_c_caps_flushing); //When a new inode enters flushing stat NEW!!
   } else {
     ldout(cct, 10) << __func__ << " (more) " << ccap_string(flushing) << " " << *in << dendl;
   }
