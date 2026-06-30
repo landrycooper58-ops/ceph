@@ -692,7 +692,7 @@ void Client::_finish_init()
     plb.add_time(l_c_wr_avg, "writeavg", "Average latency for processing write requests");
     plb.add_u64(l_c_wr_sqsum, "writesqsum", "Sum of squares ((to calculate variability/stdev) for write requests");
     plb.add_u64(l_c_wr_ops, "wrops", "Total write IO operations");
-<<<<<<< HEAD
+
     plb.add_u64_avg(l_c_rd_sz_avg, "rd_sz_avg", "Average read size");
     plb.add_u64(l_c_rd_sz_sqsum, "rd_sz_sqsum", "Sum of squares for read size");
     plb.add_u64_avg(l_c_wr_sz_avg, "wr_sz_avg", "Average write size");
@@ -758,7 +758,7 @@ void Client::_finish_init()
     plb.add_time_avg(l_c_fscrypt_dec_lat, "fscrypt_dec_lat", "Decryption time");
     plb.add_time_avg(l_c_fscrypt_rd_lat, "fscrypt_rd_lat", "Overall fscrypt read latency");
     plb.add_time_avg(l_c_fscrypt_wr_lat, "fscrypt_wr_lat", "Overall fscrypt write latency");
-=======
+
     //per operation  counters
     plb.add_time_avg(l_c_lat_getattr, "lat_getattr", "Network latency for GETATTR operations");
     plb.add_time_avg(l_c_lat_lookup, "lat_lookup", "Network latency for LOOKUP operations");
@@ -771,7 +771,7 @@ void Client::_finish_init()
     plb.add_time_avg(l_c_lat_rename, "lat_rename", "Network latency for RENAME operations");
     plb.add_time_avg(l_c_lat_setattr, "lat_setattr", "Network latency for SETATTR operations");
     plb.add_time_avg(l_c_mds_rtt, "mds_rtt", "MDS round-trip time from send to reply");
->>>>>>> cd517cf0a9a (client: Completed MDS round trip counter, and some work on per operation lat counters)
+    
     logger.reset(plb.create_perf_counters());
     cct->get_perfcounters_collection()->add(logger.get());
   }
