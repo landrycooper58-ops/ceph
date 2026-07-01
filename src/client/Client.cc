@@ -779,7 +779,7 @@ void Client::_finish_init()
     plb.add_u64(l_c_unsafe_reqs, "unsafe_reqs", "Number of in-flight metadata requests not yet committed on MDS");
     plb.add_u64_counter(l_c_lock_ops, "lock_ops", "Total fcntl/flock file locking operations");
     plb.add_time_avg(l_c_lock_lat, "lock_lat", "Latency of fcntl/flock file locking operations");
-
+    plb.add_time_avg(l_c_catchall_lat, "catchall_lat", "Average latency across all MDS operations");
     logger.reset(plb.create_perf_counters());
     cct->get_perfcounters_collection()->add(logger.get());
   }
@@ -2535,6 +2535,7 @@ int Client::make_request(MetaRequest *request,
 
   ++nr_metadata_request;
   update_io_stat_metadata(lat);
+  logger->tinc(l_c_catchall_lat, lat);
   //update_io_stat_metadata_per_op(request->get_op(), lat); replaced the helper function call witht the helper function.
   switch (request->get_op()) {
     case CEPH_MDS_OP_CREATE:
@@ -4260,9 +4261,11 @@ int Client::get_caps(Fh *fh, int need, int want, int *phave, loff_t endoff)
 	in->flags &= ~I_CAP_DROPPED;
     }
 
-    if (waitfor_caps)
-      wait_on_context_list(in->waitfor_caps);
-    else if (waitfor_commit)
+    if (waitfor_caps) {
+      utime_t cap_wait_start = ceph_clock_now(); //NEW!! gather current start time
+      wait_on_context_list(in->waitfor_caps); //NEW!! The wait block potential to take seconds to ms
+      logger->tinc(l_c_cap_wait_lat, ceph_clock_now() - cap_wait_start); //subtract start from end for total time
+    } else if (waitfor_commit)
       wait_on_context_list(in->waitfor_commit);
   }
 }
@@ -6139,6 +6142,7 @@ void Client::handle_cap_flush_ack(MetaSession *session, Inode *in, Cap *cap, con
       if (in->flushing_caps == 0) {
 	ldout(cct, 10) << " " << *in << " !flushing" << dendl;
 	num_flushing_caps--;
+  logger->dec(l_c_caps_flushing); //NEW!! when the inode finishes flushing the caps
        if (in->flushing_cap_tids.empty())
 	  in->flushing_cap_item.remove_myself();
       }
@@ -13993,6 +13997,8 @@ int Client::_do_filelock(Inode *in, Fh *fh, int lock_type, int op, int sleep,
 
   int ret;
   bufferlist bl;
+  utime_t lock_start = ceph_clock_now(); //NEW!! Start tracking time for lock ops 
+
 
   if (sleep && switch_interrupt_cb) {
     // enable interrupt
@@ -14056,6 +14062,10 @@ int Client::_do_filelock(Inode *in, Fh *fh, int lock_type, int op, int sleep,
       }
     } else
       ceph_abort();
+  }
+  if (op == CEPH_MDS_OP_SETFILELOCK) { //NEW!! Check if op is not in queue, and checks if locks is aquaire/realease operation
+    logger->inc(l_c_lock_ops); // inc lock operations
+    logger->tinc(l_c_lock_lat, ceph_clock_now() - lock_start); //time inc ceph clock now.
   }
   return ret;
 }

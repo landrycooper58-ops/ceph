@@ -187,6 +187,7 @@ enum {
   l_c_lock_ops,
   l_c_lock_lat,
   l_c_mds_rtt,
+  l_c_catchall_lat,
   l_c_last,
 };
 
