@@ -19200,6 +19200,107 @@ int Client::get_perf_counters(bufferlist *outbl) {
   return cct->get_admin_socket()->execute_command(cmd, inbl, err, outbl);
 }
 
+int Client::get_client_counters(struct ceph_client_counters *out)
+{
+  RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
+  if (!iref_reader.is_state_satisfied()) {
+    return -ENOTCONN;
+  }
+
+  // I/O latency — {ns_sum, count} pairs from PerfCounters::get_tavg_ns()
+  auto rd = logger->get_tavg_ns(l_c_read);
+  out->read_latency_ns_sum  = rd.first;
+  out->read_latency_count   = rd.second;
+
+  auto wr = logger->get_tavg_ns(l_c_wrlat);
+  out->write_latency_ns_sum  = wr.first;
+  out->write_latency_count   = wr.second;
+
+  auto md = logger->get_tavg_ns(l_c_lat);
+  out->metadata_latency_ns_sum  = md.first;
+  out->metadata_latency_count   = md.second;
+
+  // Per-op MDS latencies
+  auto cr = logger->get_tavg_ns(l_c_lat_create);
+  out->lat_create_ns_sum = cr.first;
+  out->lat_create_count  = cr.second;
+
+  auto mk = logger->get_tavg_ns(l_c_lat_mkdir);
+  out->lat_mkdir_ns_sum = mk.first;
+  out->lat_mkdir_count  = mk.second;
+
+  auto ul = logger->get_tavg_ns(l_c_lat_unlink);
+  out->lat_unlink_ns_sum = ul.first;
+  out->lat_unlink_count  = ul.second;
+
+  auto rd2 = logger->get_tavg_ns(l_c_lat_rmdir);
+  out->lat_rmdir_ns_sum = rd2.first;
+  out->lat_rmdir_count  = rd2.second;
+
+  auto rn = logger->get_tavg_ns(l_c_lat_rename);
+  out->lat_rename_ns_sum = rn.first;
+  out->lat_rename_count  = rn.second;
+
+  auto sa = logger->get_tavg_ns(l_c_lat_setattr);
+  out->lat_setattr_ns_sum = sa.first;
+  out->lat_setattr_count  = sa.second;
+
+  // I/O operation totals (tracked directly on the Client instance)
+  out->total_read_ops   = total_read_ops;
+  out->total_read_bytes = total_read_size;
+  out->total_write_ops   = total_write_ops;
+  out->total_write_bytes = total_write_size;
+
+  // Metadata request counts
+  out->nr_metadata_requests = nr_metadata_request;
+  out->nr_read_requests     = nr_read_request;
+  out->nr_write_requests    = nr_write_request;
+
+  // Capability stats
+  out->cap_hits   = cap_hits;
+  out->cap_misses = cap_misses;
+
+  // Dentry lease stats
+  out->dlease_hits   = dlease_hits;
+  out->dlease_misses = dlease_misses;
+  out->dentry_count  = dentry_nr;
+
+  // Open file / inode counts
+  out->opened_files  = opened_files;
+  out->pinned_icaps  = pinned_icaps;
+  out->opened_inodes = opened_inodes;
+  out->total_inodes  = inode_map.size();
+
+  // MDS cache / caps health
+  out->caps_flushing = logger->get(l_c_caps_flushing);
+  out->unsafe_reqs   = logger->get(l_c_unsafe_reqs);
+
+  // File locking
+  out->lock_ops = logger->get(l_c_lock_ops);
+  auto lk = logger->get_tavg_ns(l_c_lock_lat);
+  out->lock_latency_ns_sum = lk.first;
+  out->lock_latency_count  = lk.second;
+
+  // ObjectCacher local cache config and runtime state
+  if (objectcacher) {
+    out->oc_enabled          = 1;
+    out->oc_max_size         = objectcacher->get_max_size();
+    out->oc_max_dirty        = objectcacher->get_max_dirty();
+    out->oc_max_objects      = objectcacher->get_max_objects();
+    out->oc_object_count     = objectcacher->get_object_count();
+    out->oc_stat_clean       = objectcacher->get_stat_clean();
+    out->oc_stat_dirty       = objectcacher->get_stat_dirty();
+    out->oc_stat_rx          = objectcacher->get_stat_rx();
+    out->oc_stat_tx          = objectcacher->get_stat_tx();
+    out->oc_stat_missing     = objectcacher->get_stat_missing();
+    out->oc_stat_dirty_waiting = objectcacher->get_stat_dirty_waiting();
+  } else {
+    out->oc_enabled = 0;
+  }
+
+  return 0;
+}
+
 std::vector<std::string> Client::get_tracked_keys() const noexcept
 {
   static constexpr auto as_sv = std::to_array<std::string_view>({

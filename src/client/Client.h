@@ -524,6 +524,7 @@ public:
   int file_blockdiff_finish(struct scan_state_t *state);
 
   int get_perf_counters(bufferlist *outbl);
+  int get_client_counters(struct ceph_client_counters *out);
 
   /*
    * Get the next snapshot delta entry.

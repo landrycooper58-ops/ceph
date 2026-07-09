@@ -2414,6 +2414,124 @@ void ceph_free_snap_info_buffer(struct snap_info *snap_info);
  */
 int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **perf_dump);
 
+/**
+ * Structured client interface counters for consumption by external
+ * consumers such as Samba.  All latency values are in nanoseconds.
+ * Use ceph_get_client_counters() to obtain a heap-allocated snapshot
+ * and ceph_free_client_counters() to release it.
+ */
+struct ceph_client_counters {
+  /* --- I/O latency (nanoseconds; sum / count for rolling average) --- */
+  /** Cumulative nanoseconds spent in read data operations. */
+  uint64_t read_latency_ns_sum;
+  /** Number of read data operations recorded. */
+  uint64_t read_latency_count;
+
+  /** Cumulative nanoseconds spent in write data operations. */
+  uint64_t write_latency_ns_sum;
+  /** Number of write data operations recorded. */
+  uint64_t write_latency_count;
+
+  /** Cumulative nanoseconds spent in metadata (MDS) operations. */
+  uint64_t metadata_latency_ns_sum;
+  /** Number of metadata operations recorded. */
+  uint64_t metadata_latency_count;
+
+  /* --- Per-op MDS latency (ns sum + count pairs) --- */
+  uint64_t lat_create_ns_sum;
+  uint64_t lat_create_count;
+
+  uint64_t lat_mkdir_ns_sum;
+  uint64_t lat_mkdir_count;
+
+  uint64_t lat_unlink_ns_sum;
+  uint64_t lat_unlink_count;
+
+  uint64_t lat_rmdir_ns_sum;
+  uint64_t lat_rmdir_count;
+
+  uint64_t lat_rename_ns_sum;
+  uint64_t lat_rename_count;
+
+  uint64_t lat_setattr_ns_sum;
+  uint64_t lat_setattr_count;
+
+  /* --- I/O operation totals --- */
+  /** Total number of read operations since mount. */
+  uint64_t total_read_ops;
+  /** Total bytes read since mount. */
+  uint64_t total_read_bytes;
+
+  /** Total number of write operations since mount. */
+  uint64_t total_write_ops;
+  /** Total bytes written since mount. */
+  uint64_t total_write_bytes;
+
+  /* --- Metadata request counts --- */
+  uint64_t nr_metadata_requests;
+  uint64_t nr_read_requests;
+  uint64_t nr_write_requests;
+
+  /* --- Capability stats --- */
+  /** Number of capability cache hits. */
+  uint64_t cap_hits;
+  /** Number of capability cache misses. */
+  uint64_t cap_misses;
+
+  /* --- Dentry lease stats --- */
+  /** Number of dentry lease cache hits. */
+  uint64_t dlease_hits;
+  /** Number of dentry lease cache misses. */
+  uint64_t dlease_misses;
+  /** Current number of dentries in the metadata cache. */
+  uint64_t dentry_count;
+
+  /* --- Open file / inode counts --- */
+  uint64_t opened_files;
+  uint64_t pinned_icaps;
+  uint64_t opened_inodes;
+  /** Total number of inodes tracked by the client. */
+  uint64_t total_inodes;
+
+  /* --- MDS cache / caps health --- */
+  /** Number of inodes with caps currently being flushed to MDS. */
+  uint64_t caps_flushing;
+  /** Number of in-flight metadata requests not yet committed on MDS. */
+  uint64_t unsafe_reqs;
+
+  /* --- File locking --- */
+  /** Total fcntl/flock locking operations. */
+  uint64_t lock_ops;
+  /** Cumulative nanoseconds spent in lock operations (sum + count). */
+  uint64_t lock_latency_ns_sum;
+  uint64_t lock_latency_count;
+};
+
+/**
+ * Get a snapshot of the client interface counters.
+ *
+ * Allocates and populates a struct ceph_client_counters with values
+ * drawn directly from the client's live PerfCounters and in-memory
+ * tracking fields.  The struct is dynamically allocated; the caller
+ * must release it with ceph_free_client_counters().
+ *
+ * @param cmount   the ceph mount handle.
+ * @param counters output pointer; set to a newly allocated struct on success.
+ *
+ * @return 0 on success, -ENOTCONN if the client is not initialised,
+ *         -ENOMEM if allocation fails.
+ */
+int ceph_get_client_counters(struct ceph_mount_info *cmount,
+                             struct ceph_client_counters **counters);
+
+/**
+ * Release the struct returned by ceph_get_client_counters().
+ *
+ * @param counters pointer returned by a prior ceph_get_client_counters() call.
+ *                 Passing NULL is a no-op.
+ */
+void ceph_free_client_counters(struct ceph_client_counters *counters);
+
 int ceph_fcopyfile(struct ceph_mount_info *cmount, const char *spath, const char *dpath, mode_t mode);
 #ifdef __cplusplus
 }

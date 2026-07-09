@@ -2668,6 +2668,27 @@ extern "C" int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **per
   return outbl.length();
 }
 
+extern "C" int ceph_get_client_counters(struct ceph_mount_info *cmount,
+                                         struct ceph_client_counters **counters)
+{
+  auto *c = new (std::nothrow) ceph_client_counters{};
+  if (!c) {
+    return -ENOMEM;
+  }
+  int r = cmount->get_client()->get_client_counters(c);
+  if (r != 0) {
+    delete c;
+    return r;
+  }
+  *counters = c;
+  return 0;
+}
+
+extern "C" void ceph_free_client_counters(struct ceph_client_counters *counters)
+{
+  delete counters;
+}
+
 extern "C" int ceph_fcopyfile(struct ceph_mount_info *cmount, const char *spath, const char *dpath, mode_t mode)
 {
   if (!cmount->is_mounted())
