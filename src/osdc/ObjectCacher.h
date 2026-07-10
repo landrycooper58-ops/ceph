@@ -596,6 +596,7 @@ class ObjectCacher {
   loff_t get_stat_clean() const { return stat_clean; }
   loff_t get_stat_zero() const { return stat_zero; }
   loff_t get_stat_dirty_waiting() const { return stat_dirty_waiting; }
+  loff_t get_stat_missing() const { return stat_missing; }
   size_t get_stat_nr_dirty_waiters() const { return stat_nr_dirty_waiters; }
 
 

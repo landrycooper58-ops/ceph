@@ -28,6 +28,7 @@
 #include "common/compiler_extensions.h"
 #include "include/common_fwd.h"
 #include "include/cephfs/ceph_ll_client.h"
+#include "include/cephfs/ceph_client_counters.h"
 #include "include/filepath.h"
 #include "include/interval_set.h"
 #include "include/lru.h"
