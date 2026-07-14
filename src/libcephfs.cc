@@ -2671,6 +2671,9 @@ extern "C" int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **per
 extern "C" int ceph_get_client_counters(struct ceph_mount_info *cmount,
                                          struct ceph_client_counters **counters)
 {
+  if (!cmount->get_client()) {
+    return -ENOTCONN;
+  }
   auto *c = new (std::nothrow) ceph_client_counters{};
   if (!c) {
     return -ENOMEM;

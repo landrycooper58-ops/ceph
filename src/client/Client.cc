@@ -1024,7 +1024,8 @@ void Client::trim_cache(bool trim_kernel_dcache)
   if (trim_kernel_dcache && lru.lru_get_size() > max)
     _invalidate_kernel_dcache();
   
-  logger->set(l_c_dentry_count, lru.lru_get_size());//set the counter after every trim pass NEW!!
+  if (logger)
+    logger->set(l_c_dentry_count, lru.lru_get_size());
 
   // hose root?
   if (lru.lru_get_size() == 0 && root && root->get_nref() == 1 && inode_map.size() == 1 + root_parents.size()) {

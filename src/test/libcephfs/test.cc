@@ -4738,3 +4738,55 @@ TEST(LibCephFS, ZeroSizeBufferAsyncReadFsync) {
   ceph_release(cmount);
   ceph_userperm_destroy(perms);
 }
+
+
+TEST(LibCephFS, GetClientCountersBeforeMount) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+
+  struct ceph_client_counters *c = nullptr;
+  EXPECT_EQ(-ENOTCONN, ceph_get_client_counters(cmount, &c));
+  EXPECT_EQ(nullptr, c);
+
+  ceph_shutdown(cmount);
+}
+
+TEST(LibCephFS, GetClientCounters) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(0, ceph_mount(cmount, "/"));
+
+  // Snapshot before any I/O: struct must be allocated and reserved bytes zeroed.
+  struct ceph_client_counters *c = nullptr;
+  ASSERT_EQ(0, ceph_get_client_counters(cmount, &c));
+  ASSERT_NE(nullptr, c);
+  for (int i = 0; i < 16; ++i)
+    EXPECT_EQ(0u, c->reserved[i]) << "reserved[" << i << "] must be zero";
+  ceph_free_client_counters(c);
+  c = nullptr;
+
+  // Do some I/O so write counters become non-zero.
+  int fd = ceph_open(cmount, "/ceph_test_client_counters_tmp",
+                     O_CREAT | O_WRONLY, 0600);
+  ASSERT_GE(fd, 0);
+  const char buf[4096] = {};
+  ASSERT_EQ((int)sizeof(buf),
+            ceph_write(cmount, fd, buf, sizeof(buf), 0));
+  ASSERT_EQ(0, ceph_fsync(cmount, fd, 0));
+  ceph_close(cmount, fd);
+
+  // Snapshot after write: counters must reflect the completed operation.
+  ASSERT_EQ(0, ceph_get_client_counters(cmount, &c));
+  ASSERT_NE(nullptr, c);
+  EXPECT_GT(c->total_write_ops,     0u);
+  EXPECT_GT(c->total_write_bytes,   0u);
+  EXPECT_GT(c->write_latency_count, 0u);
+  ceph_free_client_counters(c);
+
+  ceph_unlink(cmount, "/ceph_test_client_counters_tmp");
+  ceph_shutdown(cmount);
+}
