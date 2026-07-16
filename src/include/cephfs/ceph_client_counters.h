@@ -1,58 +1,56 @@
-
-
 #ifndef CEPH_CLIENT_COUNTERS_H
 #define CEPH_CLIENT_COUNTERS_H
 
 #include <stdint.h>
 
 /**
+ * A latency measurement expressed as a running average.
+ *
+ * ns_sum  - cumulative nanoseconds across all recorded operations.
+ * count   - number of operations recorded.
+ *
+ * Mean latency in nanoseconds: ns_sum / count  (when count > 0).
+ */
+struct ceph_latency {
+  uint64_t ns_sum;
+  uint64_t count;
+};
+
+/**
  * Structured client interface counters for consumption by external
  * consumers such as Samba.  All latency values are in nanoseconds.
+ *
+ * This is the STABLE, EXPLICIT tier of the client perf counter API.
+ * Fields are named directly and accessed without any runtime lookup.
+ * Use this on the I/O path where zero-overhead field access is required.
+ *
  * Use ceph_get_client_counters() to obtain a heap-allocated snapshot
  * and ceph_free_client_counters() to release it.
+ *
+ * ABI stability: the struct size is fixed.  New fields are assigned
+ * from the reserved[] bank at the end.  Callers must treat any field
+ * beyond the ones they know about as zero.
  */
 struct ceph_client_counters {
-  /* --- I/O latency (nanoseconds; sum / count for rolling average) --- */
-  /** Cumulative nanoseconds spent in read data operations. */
-  uint64_t read_latency_ns_sum;
-  /** Number of read data operations recorded. */
-  uint64_t read_latency_count;
 
-  /** Cumulative nanoseconds spent in write data operations. */
-  uint64_t write_latency_ns_sum;
-  /** Number of write data operations recorded. */
-  uint64_t write_latency_count;
+  /* --- I/O latency --- */
+  struct ceph_latency read_latency;
+  struct ceph_latency write_latency;
+  struct ceph_latency metadata_latency;
 
-  /** Cumulative nanoseconds spent in metadata (MDS) operations. */
-  uint64_t metadata_latency_ns_sum;
-  /** Number of metadata operations recorded. */
-  uint64_t metadata_latency_count;
-
-  /* --- Per-op MDS latency (ns sum + count pairs) --- */
-  uint64_t lat_create_ns_sum;
-  uint64_t lat_create_count;
-
-  uint64_t lat_mkdir_ns_sum;
-  uint64_t lat_mkdir_count;
-
-  uint64_t lat_unlink_ns_sum;
-  uint64_t lat_unlink_count;
-
-  uint64_t lat_rmdir_ns_sum;
-  uint64_t lat_rmdir_count;
-
-  uint64_t lat_rename_ns_sum;
-  uint64_t lat_rename_count;
-
-  uint64_t lat_setattr_ns_sum;
-  uint64_t lat_setattr_count;
+  /* --- Per-op MDS latency --- */
+  struct ceph_latency lat_create;
+  struct ceph_latency lat_mkdir;
+  struct ceph_latency lat_unlink;
+  struct ceph_latency lat_rmdir;
+  struct ceph_latency lat_rename;
+  struct ceph_latency lat_setattr;
 
   /* --- I/O operation totals --- */
   /** Total number of read operations since mount. */
   uint64_t total_read_ops;
   /** Total bytes read since mount. */
   uint64_t total_read_bytes;
-
   /** Total number of write operations since mount. */
   uint64_t total_write_ops;
   /** Total bytes written since mount. */
@@ -64,15 +62,11 @@ struct ceph_client_counters {
   uint64_t nr_write_requests;
 
   /* --- Capability stats --- */
-  /** Number of capability cache hits. */
   uint64_t cap_hits;
-  /** Number of capability cache misses. */
   uint64_t cap_misses;
 
   /* --- Dentry lease stats --- */
-  /** Number of dentry lease cache hits. */
   uint64_t dlease_hits;
-  /** Number of dentry lease cache misses. */
   uint64_t dlease_misses;
   /** Current number of dentries in the metadata cache. */
   uint64_t dentry_count;
@@ -93,9 +87,7 @@ struct ceph_client_counters {
   /* --- File locking --- */
   /** Total fcntl/flock locking operations. */
   uint64_t lock_ops;
-  /** Cumulative nanoseconds spent in lock operations (sum + count). */
-  uint64_t lock_latency_ns_sum;
-  uint64_t lock_latency_count;
+  struct ceph_latency lock_latency;
 
   /* --- ObjectCacher local cache config --- */
   /** 1 if the ObjectCacher is active, 0 if disabled. */
@@ -110,17 +102,11 @@ struct ceph_client_counters {
   uint64_t oc_object_count;
 
   /* --- ObjectCacher local cache runtime state --- */
-  /** Bytes currently cached and clean. */
   int64_t  oc_stat_clean;
-  /** Bytes currently dirty (written to cache, not yet flushed to OSD). */
   int64_t  oc_stat_dirty;
-  /** Bytes in flight from OSD into cache (reads in progress). */
   int64_t  oc_stat_rx;
-  /** Bytes in flight from cache to OSD (writes in progress). */
   int64_t  oc_stat_tx;
-  /** Bytes not yet fetched from OSD. */
   int64_t  oc_stat_missing;
-  /** Bytes blocked because the dirty limit is full. */
   int64_t  oc_stat_dirty_waiting;
 
   /* --- Reserved padding for future ABI-compatible extension --- */
@@ -129,7 +115,7 @@ struct ceph_client_counters {
    * read or written by callers.  New counter fields will be assigned from
    * this bank in future releases, keeping the struct size stable.
    */
-  uint64_t reserved[16];
+  uint64_t reserved[32];
 };
 
 #endif /* CEPH_CLIENT_COUNTERS_H */

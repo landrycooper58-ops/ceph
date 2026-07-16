@@ -4784,7 +4784,7 @@ TEST(LibCephFS, GetClientCounters) {
   ASSERT_NE(nullptr, c);
   EXPECT_GT(c->total_write_ops,     0u);
   EXPECT_GT(c->total_write_bytes,   0u);
-  EXPECT_GT(c->write_latency_count, 0u);
+  EXPECT_GT(c->write_latency.count, 0u);
   ceph_free_client_counters(c);
 
   ceph_unlink(cmount, "/ceph_test_client_counters_tmp");

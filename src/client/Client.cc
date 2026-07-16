@@ -19210,41 +19210,41 @@ int Client::get_client_counters(struct ceph_client_counters *out)
 
   // I/O latency — {ns_sum, count} pairs from PerfCounters::get_tavg_ns()
   auto rd = logger->get_tavg_ns(l_c_read);
-  out->read_latency_ns_sum  = rd.first;
-  out->read_latency_count   = rd.second;
+  out->read_latency.ns_sum  = rd.first;
+  out->read_latency.count   = rd.second;
 
   auto wr = logger->get_tavg_ns(l_c_wrlat);
-  out->write_latency_ns_sum  = wr.first;
-  out->write_latency_count   = wr.second;
+  out->write_latency.ns_sum  = wr.first;
+  out->write_latency.count   = wr.second;
 
   auto md = logger->get_tavg_ns(l_c_lat);
-  out->metadata_latency_ns_sum  = md.first;
-  out->metadata_latency_count   = md.second;
+  out->metadata_latency.ns_sum  = md.first;
+  out->metadata_latency.count   = md.second;
 
   // Per-op MDS latencies
   auto cr = logger->get_tavg_ns(l_c_lat_create);
-  out->lat_create_ns_sum = cr.first;
-  out->lat_create_count  = cr.second;
+  out->lat_create.ns_sum = cr.first;
+  out->lat_create.count  = cr.second;
 
   auto mk = logger->get_tavg_ns(l_c_lat_mkdir);
-  out->lat_mkdir_ns_sum = mk.first;
-  out->lat_mkdir_count  = mk.second;
+  out->lat_mkdir.ns_sum = mk.first;
+  out->lat_mkdir.count  = mk.second;
 
   auto ul = logger->get_tavg_ns(l_c_lat_unlink);
-  out->lat_unlink_ns_sum = ul.first;
-  out->lat_unlink_count  = ul.second;
+  out->lat_unlink.ns_sum = ul.first;
+  out->lat_unlink.count  = ul.second;
 
   auto rd2 = logger->get_tavg_ns(l_c_lat_rmdir);
-  out->lat_rmdir_ns_sum = rd2.first;
-  out->lat_rmdir_count  = rd2.second;
+  out->lat_rmdir.ns_sum = rd2.first;
+  out->lat_rmdir.count  = rd2.second;
 
   auto rn = logger->get_tavg_ns(l_c_lat_rename);
-  out->lat_rename_ns_sum = rn.first;
-  out->lat_rename_count  = rn.second;
+  out->lat_rename.ns_sum = rn.first;
+  out->lat_rename.count  = rn.second;
 
   auto sa = logger->get_tavg_ns(l_c_lat_setattr);
-  out->lat_setattr_ns_sum = sa.first;
-  out->lat_setattr_count  = sa.second;
+  out->lat_setattr.ns_sum = sa.first;
+  out->lat_setattr.count  = sa.second;
 
   // I/O operation totals (tracked directly on the Client instance)
   out->total_read_ops   = total_read_ops;
@@ -19279,8 +19279,8 @@ int Client::get_client_counters(struct ceph_client_counters *out)
   // File locking
   out->lock_ops = logger->get(l_c_lock_ops);
   auto lk = logger->get_tavg_ns(l_c_lock_lat);
-  out->lock_latency_ns_sum = lk.first;
-  out->lock_latency_count  = lk.second;
+  out->lock_latency.ns_sum = lk.first;
+  out->lock_latency.count  = lk.second;
 
   // ObjectCacher local cache config and runtime state
   if (objectcacher) {
