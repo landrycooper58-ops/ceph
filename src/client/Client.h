@@ -29,6 +29,7 @@
 #include "include/common_fwd.h"
 #include "include/cephfs/ceph_ll_client.h"
 #include "include/cephfs/ceph_client_counters.h"
+#include "include/cephfs/ceph_perf_counter_entry.h"
 #include "include/filepath.h"
 #include "include/interval_set.h"
 #include "include/lru.h"
@@ -525,6 +526,8 @@ public:
   int file_blockdiff_finish(struct scan_state_t *state);
 
   int get_perf_counters(bufferlist *outbl);
+  int get_client_perf_json(bufferlist *outbl);
+  std::vector<ceph_perf_counter_entry> get_client_counters_list();
   int get_client_counters(struct ceph_client_counters *out);
 
   /*

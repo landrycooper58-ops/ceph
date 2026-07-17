@@ -92,6 +92,7 @@ using namespace std::literals::string_view_literals;
 
 #include "common/Cond.h"
 #include "common/perf_counters.h"
+#include "common/JSONFormatter.h"
 #include "common/admin_socket.h"
 #include "common/errno.h"
 #include "include/str_list.h"
@@ -19301,6 +19302,43 @@ int Client::get_client_counters(struct ceph_client_counters *out)
 
   return 0;
 }
+
+
+int Client::get_client_perf_json(bufferlist *outbl)
+{
+  RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
+  if (!iref_reader.is_state_satisfied()) {
+    return -ENOTCONN;
+  }
+
+  JSONFormatter f;
+  f.open_object_section("client_perf");
+  logger->dump_formatted(&f, false, select_labeled_t::unlabeled);
+  f.close_section();
+  std::ostringstream ss;
+  f.flush(ss);
+  const std::string &s = ss.str();
+  outbl->append(s.data(), s.size());
+  return 0;
+}
+
+std::vector<ceph_perf_counter_entry>
+Client::get_client_counters_list()
+{
+  RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
+  if (!iref_reader.is_state_satisfied()) {
+    return {};
+  }
+
+  std::vector<ceph_perf_counter_entry> out;
+  logger->for_each_counter(
+    [&out](const char *name, uint8_t type,
+           uint64_t sum, uint64_t count) {
+      out.push_back({name, type, sum, count});
+    });
+  return out;
+}
+
 
 std::vector<std::string> Client::get_tracked_keys() const noexcept
 {

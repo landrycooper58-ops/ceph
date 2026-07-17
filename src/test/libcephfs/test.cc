@@ -4790,3 +4790,58 @@ TEST(LibCephFS, GetClientCounters) {
   ceph_unlink(cmount, "/ceph_test_client_counters_tmp");
   ceph_shutdown(cmount);
 }
+// --- Client perf counter tests ---
+#include "include/cephfs/ceph_perf_counter_entry.h"
+#include "common/ceph_json.h"
+#include <cstring>
+
+TEST(LibCephFS, GetClientCountersListBeforeMount) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+
+  struct ceph_perf_counters_list *list = nullptr;
+  EXPECT_EQ(-ENOTCONN, ceph_get_client_counters_list(cmount, &list));
+  EXPECT_EQ(nullptr, list);
+
+  ceph_shutdown(cmount);
+}
+
+TEST(LibCephFS, GetClientCountersList) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(0, ceph_mount(cmount, "/"));
+
+  struct ceph_perf_counters_list *list = nullptr;
+  ASSERT_EQ(0, ceph_get_client_counters_list(cmount, &list));
+  ASSERT_NE(nullptr, list);
+  ASSERT_GT(list->nr_entries, 0u);
+  ASSERT_NE(nullptr, list->entries);
+
+  printf("\n%-40s  %4s  %20s  %12s\n",
+         "name", "type", "value_sum", "value_count");
+  printf("%-40s  %4s  %20s  %12s\n",
+         "----------------------------------------",
+         "----", "--------------------", "------------");
+
+  bool found_rdops = false;
+  for (uint32_t i = 0; i < list->nr_entries; ++i) {
+    const struct ceph_perf_counter_entry *e = &list->entries[i];
+    EXPECT_NE(nullptr, e->name) << "entry " << i << " has null name";
+    EXPECT_NE(0, e->type & (CEPH_PERF_TIME | CEPH_PERF_U64))
+        << "entry " << i << " has no TIME or U64 flag";
+    if (e->name && strcmp(e->name, "rdops") == 0)
+      found_rdops = true;
+    printf("%-40s  0x%02x  %20lu  %12lu\n",
+           e->name ? e->name : "(null)",
+           (unsigned)e->type, e->value_sum, e->value_count);
+  }
+  printf("\n%u counters total\n", list->nr_entries);
+  EXPECT_TRUE(found_rdops) << "\"rdops\" not found in list";
+
+  ceph_free_client_counters_list(list);
+  ceph_shutdown(cmount);
+}

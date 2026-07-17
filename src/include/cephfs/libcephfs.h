@@ -2415,6 +2415,14 @@ void ceph_free_snap_info_buffer(struct snap_info *snap_info);
 int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **perf_dump);
 
 //went with a header file, so both client, and libcephfs can access the struct, but may need to change that going forward
+#include "ceph_perf_counter_entry.h"
+
+int ceph_get_client_counters_list(struct ceph_mount_info *cmount,
+                                   struct ceph_perf_counters_list **list);
+
+void ceph_free_client_counters_list(struct ceph_perf_counters_list *list);
+
+
 #include "ceph_client_counters.h" 
 /**
  * Get a snapshot of the client interface counters.

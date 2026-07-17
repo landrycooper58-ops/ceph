@@ -286,6 +286,35 @@ public:
   }
   std::pair<uint64_t, uint64_t> get_tavg_ns(int idx) const;
 
+  /**
+   * Invoke @p fn once for every registered non-histogram counter.
+   *
+   * fn signature: void fn(const char *name, uint8_t type,
+   *                       uint64_t value_sum, uint64_t value_count)
+   *
+   * For LONGRUNAVG counters value_sum/value_count form a coherent
+   * (sum, count) pair read atomically via read_avg().  For TIME
+   * counters value_sum is in nanoseconds.  For all other counters
+   * value_sum holds the current value and value_count is 0.
+   * Histogram entries are skipped.
+   */
+  template <typename Fn>
+  void for_each_counter(Fn &&fn) const {
+    for (const auto &d : m_data) {
+      if (!d.name)
+        continue;
+      if (d.type & PERFCOUNTER_HISTOGRAM)
+        continue;
+      if (d.type & PERFCOUNTER_LONGRUNAVG) {
+        auto [sum, count] = d.read_avg();
+        fn(d.name, static_cast<uint8_t>(d.type), sum, count);
+      } else {
+        fn(d.name, static_cast<uint8_t>(d.type),
+           static_cast<uint64_t>(d.u64), uint64_t{0});
+      }
+    }
+  }
+
   const std::string& get_name() const;
   void set_name(std::string s) {
     m_name = s;

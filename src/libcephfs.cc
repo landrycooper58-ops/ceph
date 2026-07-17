@@ -13,6 +13,7 @@
  *
  */
 
+#include <algorithm>
 #include <fcntl.h>
 #include <iostream>
 #include <string.h>
@@ -2655,6 +2656,42 @@ extern "C" void ceph_free_snap_info_buffer(struct snap_info *snap_info) {
     free((void *)snap_info->snap_metadata[i].key); // malloc'd memory is key+value composite
   }
   free(snap_info->snap_metadata);
+}
+
+extern "C" int ceph_get_client_counters_list(struct ceph_mount_info *cmount,
+                                              struct ceph_perf_counters_list **list)
+{
+  if (!cmount->get_client()) {
+    return -ENOTCONN;
+  }
+  auto vec = cmount->get_client()->get_client_counters_list();
+  if (vec.empty()) {
+    return -ENOTCONN;
+  }
+
+  auto *l = new (std::nothrow) ceph_perf_counters_list{};
+  if (!l) {
+    return -ENOMEM;
+  }
+
+  l->nr_entries = static_cast<uint32_t>(vec.size());
+  l->entries = new (std::nothrow) ceph_perf_counter_entry[l->nr_entries];
+  if (!l->entries) {
+    delete l;
+    return -ENOMEM;
+  }
+
+  std::copy(vec.begin(), vec.end(), l->entries);
+  *list = l;
+  return 0;
+}
+
+extern "C" void ceph_free_client_counters_list(struct ceph_perf_counters_list *list)
+{
+  if (!list)
+    return;
+  delete[] list->entries;
+  delete list;
 }
 
 extern "C" int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **perf_dump) {
