@@ -28,8 +28,6 @@
 #include "common/compiler_extensions.h"
 #include "include/common_fwd.h"
 #include "include/cephfs/ceph_ll_client.h"
-#include "include/cephfs/ceph_client_counters.h"
-#include "include/cephfs/ceph_perf_counter_entry.h"
 #include "include/filepath.h"
 #include "include/interval_set.h"
 #include "include/lru.h"
@@ -526,9 +524,24 @@ public:
   int file_blockdiff_finish(struct scan_state_t *state);
 
   int get_perf_counters(bufferlist *outbl);
-  int get_client_perf_json(bufferlist *outbl);
-  std::vector<ceph_perf_counter_entry> get_client_counters_list();
-  int get_client_counters(struct ceph_client_counters *out);
+
+  
+  /** Return the internal PerfCounters logger (nullptr if not yet initialised). */
+  PerfCounters *get_logger() const { return logger.get(); }
+
+  /**
+   * Read a single perf counter value directly from the internal PerfCounters
+   * object.  @p idx must be in [l_c_first, l_c_last).
+   *
+   * For U64 counters returns the raw count cast to int64_t.
+   * For TIME counters returns nanoseconds as a large int (tget().to_nsec()).
+   * Returns -ENOTCONN if the client is not initialised.
+   * Returns -ERANGE  if idx is out of bounds.
+   *
+   * @p is_time is set to true when @p idx refers to a time counter.
+   */
+  int64_t get_perf_counter_value(int idx, bool *is_time);
+
 
   /*
    * Get the next snapshot delta entry.

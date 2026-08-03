@@ -19202,143 +19202,32 @@ int Client::get_perf_counters(bufferlist *outbl) {
   return cct->get_admin_socket()->execute_command(cmd, inbl, err, outbl);
 }
 
-int Client::get_client_counters(struct ceph_client_counters *out)
+
+
+int64_t Client::get_perf_counter_value(int idx, bool *is_time)
 {
   RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
   if (!iref_reader.is_state_satisfied()) {
     return -ENOTCONN;
   }
-
-  // I/O latency — {ns_sum, count} pairs from PerfCounters::get_tavg_ns()
-  auto rd = logger->get_tavg_ns(l_c_read);
-  out->read_latency.ns_sum  = rd.first;
-  out->read_latency.count   = rd.second;
-
-  auto wr = logger->get_tavg_ns(l_c_wrlat);
-  out->write_latency.ns_sum  = wr.first;
-  out->write_latency.count   = wr.second;
-
-  auto md = logger->get_tavg_ns(l_c_lat);
-  out->metadata_latency.ns_sum  = md.first;
-  out->metadata_latency.count   = md.second;
-
-  // Per-op MDS latencies
-  auto cr = logger->get_tavg_ns(l_c_lat_create);
-  out->lat_create.ns_sum = cr.first;
-  out->lat_create.count  = cr.second;
-
-  auto mk = logger->get_tavg_ns(l_c_lat_mkdir);
-  out->lat_mkdir.ns_sum = mk.first;
-  out->lat_mkdir.count  = mk.second;
-
-  auto ul = logger->get_tavg_ns(l_c_lat_unlink);
-  out->lat_unlink.ns_sum = ul.first;
-  out->lat_unlink.count  = ul.second;
-
-  auto rd2 = logger->get_tavg_ns(l_c_lat_rmdir);
-  out->lat_rmdir.ns_sum = rd2.first;
-  out->lat_rmdir.count  = rd2.second;
-
-  auto rn = logger->get_tavg_ns(l_c_lat_rename);
-  out->lat_rename.ns_sum = rn.first;
-  out->lat_rename.count  = rn.second;
-
-  auto sa = logger->get_tavg_ns(l_c_lat_setattr);
-  out->lat_setattr.ns_sum = sa.first;
-  out->lat_setattr.count  = sa.second;
-
-  // I/O operation totals (tracked directly on the Client instance)
-  out->total_read_ops   = total_read_ops;
-  out->total_read_bytes = total_read_size;
-  out->total_write_ops   = total_write_ops;
-  out->total_write_bytes = total_write_size;
-
-  // Metadata request counts
-  out->nr_metadata_requests = nr_metadata_request;
-  out->nr_read_requests     = nr_read_request;
-  out->nr_write_requests    = nr_write_request;
-
-  // Capability stats
-  out->cap_hits   = cap_hits;
-  out->cap_misses = cap_misses;
-
-  // Dentry lease stats
-  out->dlease_hits   = dlease_hits;
-  out->dlease_misses = dlease_misses;
-  out->dentry_count  = dentry_nr;
-
-  // Open file / inode counts
-  out->opened_files  = opened_files;
-  out->pinned_icaps  = pinned_icaps;
-  out->opened_inodes = opened_inodes;
-  out->total_inodes  = inode_map.size();
-
-  // MDS cache / caps health
-  out->caps_flushing = logger->get(l_c_caps_flushing);
-  out->unsafe_reqs   = logger->get(l_c_unsafe_reqs);
-
-  // File locking
-  out->lock_ops = logger->get(l_c_lock_ops);
-  auto lk = logger->get_tavg_ns(l_c_lock_lat);
-  out->lock_latency.ns_sum = lk.first;
-  out->lock_latency.count  = lk.second;
-
-  // ObjectCacher local cache config and runtime state
-  if (objectcacher) {
-    out->oc_enabled          = 1;
-    out->oc_max_size         = objectcacher->get_max_size();
-    out->oc_max_dirty        = objectcacher->get_max_dirty();
-    out->oc_max_objects      = objectcacher->get_max_objects();
-    out->oc_object_count     = objectcacher->get_object_count();
-    out->oc_stat_clean       = objectcacher->get_stat_clean();
-    out->oc_stat_dirty       = objectcacher->get_stat_dirty();
-    out->oc_stat_rx          = objectcacher->get_stat_rx();
-    out->oc_stat_tx          = objectcacher->get_stat_tx();
-    out->oc_stat_missing     = objectcacher->get_stat_missing();
-    out->oc_stat_dirty_waiting = objectcacher->get_stat_dirty_waiting();
-  } else {
-    out->oc_enabled = 0;
+  // Valid counter indices are (l_c_first, l_c_last) exclusive — l_c_first and
+  // l_c_last are sentinels only; PerfCounters asserts idx > lower_bound.
+  if (idx <= l_c_first || idx >= l_c_last) {
+    return -ERANGE;
   }
 
-  return 0;
-}
-
-
-int Client::get_client_perf_json(bufferlist *outbl)
-{
-  RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
-  if (!iref_reader.is_state_satisfied()) {
-    return -ENOTCONN;
+  // Ask the PerfCounters object directly for the type flag
+  // Adding or removing a counter in Client.h and _finish_init()
+  // automatically propagates here.
+  bool t = (logger->get_type(idx) & PERFCOUNTER_TIME) != 0;
+  if (is_time) {
+    *is_time = t;
   }
-
-  JSONFormatter f;
-  f.open_object_section("client_perf");
-  logger->dump_formatted(&f, false, select_labeled_t::unlabeled);
-  f.close_section();
-  std::ostringstream ss;
-  f.flush(ss);
-  const std::string &s = ss.str();
-  outbl->append(s.data(), s.size());
-  return 0;
-}
-
-std::vector<ceph_perf_counter_entry>
-Client::get_client_counters_list()
-{
-  RWRef_t iref_reader(initialize_state, CLIENT_INITIALIZED);
-  if (!iref_reader.is_state_satisfied()) {
-    return {};
+  if (t) {
+    return (int64_t)logger->tget(idx).to_nsec();
   }
-
-  std::vector<ceph_perf_counter_entry> out;
-  logger->for_each_counter(
-    [&out](const char *name, uint8_t type,
-           uint64_t sum, uint64_t count) {
-      out.push_back({name, type, sum, count});
-    });
-  return out;
+  return (int64_t)logger->get(idx);
 }
-
 
 std::vector<std::string> Client::get_tracked_keys() const noexcept
 {

@@ -37,6 +37,7 @@
 #include "messages/MMonMap.h"
 #include "msg/Messenger.h"
 #include "include/ceph_assert.h"
+#include "common/perf_counters.h"
 #include "mds/MDSMap.h"
 
 #include "include/cephfs/libcephfs.h"
@@ -2658,40 +2659,55 @@ extern "C" void ceph_free_snap_info_buffer(struct snap_info *snap_info) {
   free(snap_info->snap_metadata);
 }
 
-extern "C" int ceph_get_client_counters_list(struct ceph_mount_info *cmount,
-                                              struct ceph_perf_counters_list **list)
+extern "C" int ceph_get_perf_counters_struct(struct ceph_mount_info *cmount,
+                                              struct ceph_perf_counters_t **out)
 {
-  if (!cmount->get_client()) {
-    return -ENOTCONN;
+  if (!out) {
+    return -EINVAL;
   }
-  auto vec = cmount->get_client()->get_client_counters_list();
-  if (vec.empty()) {
+  *out = NULL;
+
+  Client *client = cmount->get_client();
+  PerfCounters *logger = client->get_logger();
+  if (!logger) {
     return -ENOTCONN;
   }
 
-  auto *l = new (std::nothrow) ceph_perf_counters_list{};
-  if (!l) {
+  // Get the actual counter range from the logger — no compile-time constants.
+  int lo = logger->get_lower_bound();  // l_c_first (exclusive)
+  int hi = logger->get_upper_bound();  // l_c_last (exclusive)
+  int n  = hi - lo - 1;               // number of real counters
+
+  if (n <= 0) {
+    return -EINVAL;
+  }
+
+  // Allocate struct with variable-length entries array.
+  // Size = sizeof(struct) + (n * sizeof(entry))
+  size_t sz = sizeof(struct ceph_perf_counters_t) +
+              (n * sizeof(struct ceph_perf_counter_entry_t));
+  struct ceph_perf_counters_t *s = (struct ceph_perf_counters_t *)malloc(sz);
+  if (!s) {
     return -ENOMEM;
   }
 
-  l->nr_entries = static_cast<uint32_t>(vec.size());
-  l->entries = new (std::nothrow) ceph_perf_counter_entry[l->nr_entries];
-  if (!l->entries) {
-    delete l;
-    return -ENOMEM;
+  s->num_counters = n;
+
+  // Fill each entry dynamically 
+  for (int i = 0; i < n; ++i) {
+    int idx = lo + 1 + i;
+    bool is_time = false;
+    int64_t v = client->get_perf_counter_value(idx, &is_time);
+
+    s->entries[i].value = v;
+    s->entries[i].type  = is_time ? CEPH_PERF_KIND_TIME : CEPH_PERF_KIND_U64;
+    strncpy(s->entries[i].name, logger->get_name_for_idx(idx),
+            CEPH_PERF_NAME_LEN - 1);
+    s->entries[i].name[CEPH_PERF_NAME_LEN - 1] = '\0';
   }
 
-  std::copy(vec.begin(), vec.end(), l->entries);
-  *list = l;
+  *out = s;
   return 0;
-}
-
-extern "C" void ceph_free_client_counters_list(struct ceph_perf_counters_list *list)
-{
-  if (!list)
-    return;
-  delete[] list->entries;
-  delete list;
 }
 
 extern "C" int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **perf_dump) {
@@ -2703,30 +2719,6 @@ extern "C" int ceph_get_perf_counters(struct ceph_mount_info *cmount, char **per
 
   do_out_buffer(outbl, perf_dump, NULL);
   return outbl.length();
-}
-
-extern "C" int ceph_get_client_counters(struct ceph_mount_info *cmount,
-                                         struct ceph_client_counters **counters)
-{
-  if (!cmount->get_client()) {
-    return -ENOTCONN;
-  }
-  auto *c = new (std::nothrow) ceph_client_counters{};
-  if (!c) {
-    return -ENOMEM;
-  }
-  int r = cmount->get_client()->get_client_counters(c);
-  if (r != 0) {
-    delete c;
-    return r;
-  }
-  *counters = c;
-  return 0;
-}
-
-extern "C" void ceph_free_client_counters(struct ceph_client_counters *counters)
-{
-  delete counters;
 }
 
 extern "C" int ceph_fcopyfile(struct ceph_mount_info *cmount, const char *spath, const char *dpath, mode_t mode)

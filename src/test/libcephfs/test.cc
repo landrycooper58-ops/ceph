@@ -32,6 +32,10 @@
 #include <sys/resource.h>
 #endif
 
+
+#include "common/ceph_json.h"
+#include "include/utime.h"
+
 #include "common/Clock.h"
 
 #ifdef __linux__
@@ -45,7 +49,7 @@
 #include <thread>
 #include <random>
 #include <regex>
-
+#include <cstring>
 // Darwin or windows fails to define this
 #ifndef O_RSYNC
 #define O_RSYNC 0x0
@@ -4739,109 +4743,103 @@ TEST(LibCephFS, ZeroSizeBufferAsyncReadFsync) {
   ceph_userperm_destroy(perms);
 }
 
-
-TEST(LibCephFS, GetClientCountersBeforeMount) {
-  struct ceph_mount_info *cmount;
-  ASSERT_EQ(0, ceph_create(&cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
-
-  struct ceph_client_counters *c = nullptr;
-  EXPECT_EQ(-ENOTCONN, ceph_get_client_counters(cmount, &c));
-  EXPECT_EQ(nullptr, c);
-
-  ceph_shutdown(cmount);
-}
-
-TEST(LibCephFS, GetClientCounters) {
+TEST(LibCephFS, ValidatePerfCounters) {
   struct ceph_mount_info *cmount;
   ASSERT_EQ(0, ceph_create(&cmount, NULL));
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
   ASSERT_EQ(0, ceph_mount(cmount, "/"));
 
-  // Snapshot before any I/O: struct must be allocated and reserved bytes zeroed.
-  struct ceph_client_counters *c = nullptr;
-  ASSERT_EQ(0, ceph_get_client_counters(cmount, &c));
-  ASSERT_NE(nullptr, c);
-  for (int i = 0; i < 16; ++i)
-    EXPECT_EQ(0u, c->reserved[i]) << "reserved[" << i << "] must be zero";
-  ceph_free_client_counters(c);
-  c = nullptr;
+  char *perf_dump;
+  int len = ceph_get_perf_counters(cmount, &perf_dump);
+  ASSERT_GT(len, 0);
 
-  // Do some I/O so write counters become non-zero.
-  int fd = ceph_open(cmount, "/ceph_test_client_counters_tmp",
-                     O_CREAT | O_WRONLY, 0600);
-  ASSERT_GE(fd, 0);
-  const char buf[4096] = {};
-  ASSERT_EQ((int)sizeof(buf),
-            ceph_write(cmount, fd, buf, sizeof(buf), 0));
-  ASSERT_EQ(0, ceph_fsync(cmount, fd, 0));
-  ceph_close(cmount, fd);
+  JSONParser jp;
+  ASSERT_TRUE(jp.parse(perf_dump, len));
 
-  // Snapshot after write: counters must reflect the completed operation.
-  ASSERT_EQ(0, ceph_get_client_counters(cmount, &c));
-  ASSERT_NE(nullptr, c);
-  EXPECT_GT(c->total_write_ops,     0u);
-  EXPECT_GT(c->total_write_bytes,   0u);
-  EXPECT_GT(c->write_latency.count, 0u);
-  ceph_free_client_counters(c);
+  JSONObj *jo = jp.find_obj("client");
 
-  ceph_unlink(cmount, "/ceph_test_client_counters_tmp");
-  ceph_shutdown(cmount);
-}
-// --- Client perf counter tests ---
-#include "include/cephfs/ceph_perf_counter_entry.h"
-#include "common/ceph_json.h"
-#include <cstring>
 
-TEST(LibCephFS, GetClientCountersListBeforeMount) {
-  struct ceph_mount_info *cmount;
-  ASSERT_EQ(0, ceph_create(&cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  utime_t val;
+  JSONDecoder::decode_json("mdavg", val, jo);
+  JSONDecoder::decode_json("readavg", val, jo);
+  JSONDecoder::decode_json("writeavg", val, jo);
 
-  struct ceph_perf_counters_list *list = nullptr;
-  EXPECT_EQ(-ENOTCONN, ceph_get_client_counters_list(cmount, &list));
-  EXPECT_EQ(nullptr, list);
+  int count;
+  JSONDecoder::decode_json("mdops", count, jo);
+  JSONDecoder::decode_json("rdops", count, jo);
+  JSONDecoder::decode_json("wrops", count, jo);
 
+  free(perf_dump);
   ceph_shutdown(cmount);
 }
 
-TEST(LibCephFS, GetClientCountersList) {
+TEST(LibCephFS, PerfCountersStruct) {
   struct ceph_mount_info *cmount;
   ASSERT_EQ(0, ceph_create(&cmount, NULL));
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
   ASSERT_EQ(0, ceph_mount(cmount, "/"));
 
-  struct ceph_perf_counters_list *list = nullptr;
-  ASSERT_EQ(0, ceph_get_client_counters_list(cmount, &list));
-  ASSERT_NE(nullptr, list);
-  ASSERT_GT(list->nr_entries, 0u);
-  ASSERT_NE(nullptr, list->entries);
+  struct ceph_perf_counters_t *s = NULL;
+  ASSERT_EQ(0, ceph_get_perf_counters_struct(cmount, &s));
+  ASSERT_NE(nullptr, s);
+  ASSERT_GT(s->num_counters, 0);
 
-  printf("\n%-40s  %4s  %20s  %12s\n",
-         "name", "type", "value_sum", "value_count");
-  printf("%-40s  %4s  %20s  %12s\n",
-         "----------------------------------------",
-         "----", "--------------------", "------------");
+  // NULL pointer must be rejected.
+  ASSERT_EQ(-EINVAL, ceph_get_perf_counters_struct(cmount, NULL));
 
-  bool found_rdops = false;
-  for (uint32_t i = 0; i < list->nr_entries; ++i) {
-    const struct ceph_perf_counter_entry *e = &list->entries[i];
-    EXPECT_NE(nullptr, e->name) << "entry " << i << " has null name";
-    EXPECT_NE(0, e->type & (CEPH_PERF_TIME | CEPH_PERF_U64))
-        << "entry " << i << " has no TIME or U64 flag";
-    if (e->name && strcmp(e->name, "rdops") == 0)
-      found_rdops = true;
-    printf("%-40s  0x%02x  %20lu  %12lu\n",
-           e->name ? e->name : "(null)",
-           (unsigned)e->type, e->value_sum, e->value_count);
+  // Every entry must have a non-empty name and a non-negative value.
+  for (int i = 0; i < s->num_counters; i++) {
+    EXPECT_NE('\0', s->entries[i].name[0])
+        << "slot " << i << " has empty name";
+    EXPECT_GE(s->entries[i].value, 0)
+        << "negative value at slot " << i
+        << " (name=" << s->entries[i].name << ")";
+    EXPECT_TRUE(s->entries[i].type == CEPH_PERF_KIND_U64 ||
+                s->entries[i].type == CEPH_PERF_KIND_TIME)
+        << "unknown type at slot " << i;
   }
-  printf("\n%u counters total\n", list->nr_entries);
-  EXPECT_TRUE(found_rdops) << "\"rdops\" not found in list";
 
-  ceph_free_client_counters_list(list);
+ 
+  struct { const char *name; int kind; bool check_zero; } expected[] = {
+    { "mdops",    CEPH_PERF_KIND_U64,  false },
+    { "rdops",    CEPH_PERF_KIND_U64,  true  },
+    { "wrops",    CEPH_PERF_KIND_U64,  true  },
+    { "mdavg",    CEPH_PERF_KIND_TIME, false },
+    { "readavg",  CEPH_PERF_KIND_TIME, false },
+    { "writeavg", CEPH_PERF_KIND_TIME, false },
+  };
+  for (auto &e : expected) {
+    bool found = false;
+    for (int i = 0; i < s->num_counters; i++) {
+      if (strcmp(s->entries[i].name, e.name) == 0) {
+        found = true;
+        EXPECT_EQ(e.kind, (int)s->entries[i].type)
+            << "wrong kind for counter '" << e.name << "'";
+        if (e.check_zero) {
+          EXPECT_EQ(0, s->entries[i].value)
+              << "'" << e.name << "' must be 0 on fresh mount";
+        }
+        break;
+      }
+    }
+    EXPECT_TRUE(found) << "counter '" << e.name << "' not found in struct";
+  }
+
+  printf("ceph_perf_counters_t  num_counters=%d\n", s->num_counters);
+  printf("  %-4s  %-5s  %-32s  %s\n", "idx", "type", "name", "value");
+  printf("  %-4s  %-5s  %-32s  %s\n", "---", "----", "----", "-----");
+  for (int i = 0; i < s->num_counters; i++) {
+    const auto &e = s->entries[i];
+    printf("  %-4d  %-5s  %-32s  %lld%s\n",
+           i,
+           e.type == CEPH_PERF_KIND_TIME ? "TIME" : "U64",
+           e.name,
+           (long long)e.value,
+           e.type == CEPH_PERF_KIND_TIME ? " ns" : "");
+  }
+
+  free(s);
   ceph_shutdown(cmount);
 }
