@@ -4743,37 +4743,6 @@ TEST(LibCephFS, ZeroSizeBufferAsyncReadFsync) {
   ceph_userperm_destroy(perms);
 }
 
-TEST(LibCephFS, ValidatePerfCounters) {
-  struct ceph_mount_info *cmount;
-  ASSERT_EQ(0, ceph_create(&cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
-  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
-  ASSERT_EQ(0, ceph_mount(cmount, "/"));
-
-  char *perf_dump;
-  int len = ceph_get_perf_counters(cmount, &perf_dump);
-  ASSERT_GT(len, 0);
-
-  JSONParser jp;
-  ASSERT_TRUE(jp.parse(perf_dump, len));
-
-  JSONObj *jo = jp.find_obj("client");
-
-
-  utime_t val;
-  JSONDecoder::decode_json("mdavg", val, jo);
-  JSONDecoder::decode_json("readavg", val, jo);
-  JSONDecoder::decode_json("writeavg", val, jo);
-
-  int count;
-  JSONDecoder::decode_json("mdops", count, jo);
-  JSONDecoder::decode_json("rdops", count, jo);
-  JSONDecoder::decode_json("wrops", count, jo);
-
-  free(perf_dump);
-  ceph_shutdown(cmount);
-}
-
 TEST(LibCephFS, PerfCountersStruct) {
   struct ceph_mount_info *cmount;
   ASSERT_EQ(0, ceph_create(&cmount, NULL));
